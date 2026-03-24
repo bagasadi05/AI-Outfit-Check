@@ -109,52 +109,46 @@ export const generateVirtualTryOn = async (
     const parts: any[] = [modelPart];
     
     // Adjusted Temperature Logic:
-    // If we have a reference file for Outfit, we want LOW creativity (high fidelity).
-    // If we are just generating from text, we allow more creativity.
-    let temperature = Math.max(0.1, Math.min(1.0, creativityLevel / 100));
+    // We want enough creativity to allow pose changes, but not too much to lose the identity.
+    let temperature = Math.max(0.4, Math.min(1.0, creativityLevel / 100));
     
     if (mode === 'outfit' && referenceFile) {
-        // Force lower temperature for virtual try-on to adhere to the reference image
-        temperature = 0.2; 
+        // If there's a reference outfit, we need some fidelity, but still allow pose changes.
+        temperature = Math.max(0.4, temperature); 
     }
 
     // Base instruction depending on mode
     let instructions = "";
 
     if (mode === 'outfit') {
-        instructions = `You are a professional fashion photo retoucher performing a VIRTUAL TRY-ON.
-        TASK: Dress the person in the first image with the outfit from the second image.
+        instructions = `You are an expert AI image editor.
+        TASK: Change the person's OUTFIT to match the description: "${prompt}".
         
         CRITICAL RULES:
-        1. DO NOT change the body shape, head size, or pose.
-        2. Keep the original background exactly as it is.
-        3. Focus strictly on inpainting the clothing area only.`;
+        1. CHANGE THE POSE: You MUST change the person's pose to match the requested action or a natural, dynamic pose if none is specified. Do NOT keep the original pose.
+        2. STRICT BACKGROUND PRESERVATION: The background pixels (walls, furniture, outdoor scenery) MUST remain identical to the first image. DO NOT change the location. Inpaint the background naturally where the old pose used to be.
+        3. STRICT IDENTITY PRESERVATION: Use the first image as a strict visual reference for the person's identity (face, facial features, skin tone).
+        4. Apply the requested outfit naturally to the new pose.`;
         
         if (referenceFile) {
-            // Step 1: Analyze the reference image to get text details
-            // We do this to reinforce the visual input with text description
             const refAnalysis = await analyzeReferenceImage(referenceFile);
-
             const refPart = await fileToGenerativePart(referenceFile);
             parts.push(refPart);
             
             instructions += `\n\n[STRICT OUTFIT REPLICATION]
             The second image is the EXACT garment to be worn.
-            - TEXTURE MAPPING: You must transfer the fabric pattern, print, and material from the Reference Image onto the Model.
-            - PATTERN FIDELITY: If the reference has a specific print (e.g. batik, floral), it MUST appear on the result. Do not replace it with a generic pattern.
+            - TEXTURE MAPPING: Transfer the fabric pattern, print, and material from the Reference Image onto the Model.
             - STRUCTURAL MATCH: Match the neckline, sleeve length, and cut exactly.
-            - Reference Description: ${refAnalysis}
-            - Blend the outfit naturally at the neck and wrists.`;
+            - Reference Description: ${refAnalysis}`;
         }
     } else if (mode === 'bg') {
         instructions = `You are an expert compositor.
-        TASK: Change the background of this image to: "${prompt}".
+        TASK: Change the BACKGROUND of this image to: "${prompt}".
         
         CRITICAL RULES:
-        1. PRESERVE THE PERSON EXACTLY. Do not change their face, expression, or outfit.
-        2. Perform precise segmentation of the person.
-        3. Replace ONLY the background pixels.
-        4. Adjust the lighting on the person slightly to match the new environment, but do not alter their identity.`;
+        1. STRICT PERSON PRESERVATION: PRESERVE THE PERSON EXACTLY. Do not change their face, expression, pose, or outfit.
+        2. Replace ONLY the background pixels.
+        3. Adjust the lighting on the person slightly to match the new environment, but do not alter their identity.`;
 
         if (referenceFile) {
             const refPart = await fileToGenerativePart(referenceFile);
@@ -164,12 +158,14 @@ export const generateVirtualTryOn = async (
             instructions += `\nGenerate a photorealistic background based on the text description.`;
         }
     } else if (mode === 'pose') {
-        instructions = `TASK: Regenerate the person with a NEW POSE: "${prompt}".
+        instructions = `You are an expert AI image editor.
+        TASK: Regenerate the person with a NEW POSE: "${prompt}".
         
         CRITICAL RULES:
-        1. Keep the same outfit style and hijab style.
-        2. The result must look like the SAME PERSON, just moving.
-        3. Photorealistic, 8k quality.`;
+        1. CHANGE THE POSE: You MUST change the person's pose to match the requested action.
+        2. STRICT OUTFIT PRESERVATION: Keep the exact same clothing style, colors, and hijab style as the original image.
+        3. STRICT BACKGROUND PRESERVATION: The background pixels (walls, furniture, outdoor scenery) MUST remain identical to the first image. DO NOT change the location. Inpaint the background naturally where the old pose used to be.
+        4. STRICT IDENTITY PRESERVATION: The result must look like the EXACT SAME PERSON, just moving.`;
 
         if (referenceFile) {
             const refPart = await fileToGenerativePart(referenceFile);
@@ -181,10 +177,9 @@ export const generateVirtualTryOn = async (
     // Append Face Lock Instructions
     if (faceLock) {
         instructions += `\n\n[STRICT IDENTITY PROTECTION]
-        - The person's face (eyes, nose, mouth, jawline) and skin tone MUST remain bit-for-bit identical to the source image.
-        - Do NOT regenerate or "improve" the face.
-        - If the new outfit interacts with the neck/chin, ensure seamless blending without altering the jawline.
-        - Treat the face area as a frozen layer.`;
+        - The person's facial features (eyes, nose, mouth, jawline) and skin tone MUST strongly resemble the source image.
+        - You are allowed to adjust the angle of the head to match the new pose, but the identity MUST remain the same.
+        - Do not change the person's ethnicity, age, or core facial structure.`;
     } else {
         instructions += `\n\nNote: Maintain general resemblance to the original person, but minor adjustments to expression or angle are permitted if needed for realism.`;
     }
@@ -271,77 +266,3 @@ export const getOutfitRecommendations = async (file: File): Promise<string> => {
     }
 };
 
-/**
- * Generates a video using Veo 3 based on an input image.
- */
-export const generateFashionVideo = async (imageFile: File, prompt: string): Promise<string> => {
-    // Create new client to grab the latest key selected by user
-    const ai = getClient();
-    const imagePart = await fileToGenerativePart(imageFile);
-
-    try {
-        let operation = await ai.models.generateVideos({
-            model: 'veo-3.1-fast-generate-preview',
-            prompt: prompt || "Fashion model posing naturally, subtle cinematic movement, high quality, 4k",
-            image: {
-                imageBytes: imagePart.inlineData.data,
-                mimeType: imagePart.inlineData.mimeType,
-            },
-            config: {
-                numberOfVideos: 1,
-                resolution: '720p',
-                aspectRatio: '9:16' // Standard for social media/fashion clips
-            }
-        });
-
-        // Poll until done
-        while (!operation.done) {
-            await new Promise(resolve => setTimeout(resolve, 5000)); // Poll every 5 seconds
-            operation = await ai.operations.getVideosOperation({ operation: operation });
-        }
-
-        const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-        
-        if (!downloadLink) {
-            throw new Error("Video generation completed but no download link found.");
-        }
-
-        // Fetch the actual video bytes using the API Key
-        const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
-        if (!response.ok) {
-            throw new Error(`Failed to download video: ${response.statusText}`);
-        }
-        
-        const videoBlob = await response.blob();
-        return URL.createObjectURL(videoBlob);
-
-    } catch (error) {
-        console.error("Error generating video:", error);
-        throw error;
-    }
-};
-
-/**
- * Analyzes an uploaded outfit and provides styling advice.
- */
-export const analyzeUploadedLook = async (file: File, query: string): Promise<string> => {
-    const ai = getClient();
-    const imagePart = await fileToGenerativePart(file);
-
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: {
-                parts: [
-                    imagePart,
-                    { text: query }
-                ]
-            }
-        });
-        
-        return response.text || "No analysis generated.";
-    } catch (error) {
-        console.error("Error analyzing outfit:", error);
-        throw error;
-    }
-};

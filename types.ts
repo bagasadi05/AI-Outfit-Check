@@ -1,8 +1,5 @@
 export enum AppMode {
-  HOME = 'HOME',
-  GENERATOR = 'GENERATOR',
-  VIDEO = 'VIDEO',
-  CHAT = 'CHAT'
+  GENERATOR = 'GENERATOR'
 }
 
 export interface StylingPreferences {

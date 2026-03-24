@@ -1,41 +1,23 @@
 import React, { useState, Suspense } from 'react';
 import { AppMode } from './types';
 import Navigation from './components/Navigation';
-import Hero from './components/Hero';
 import LoadingScreen from './components/common/LoadingScreen';
 
 // Lazy load heavy components
 const StyleGenerator = React.lazy(() => import('./components/StyleGenerator'));
-const VideoGenerator = React.lazy(() => import('./components/VideoGenerator'));
-const ChatInterface = React.lazy(() => import('./components/ChatInterface'));
 
 const App: React.FC = () => {
-  const [currentMode, setCurrentMode] = useState<AppMode>(AppMode.HOME);
+  const [currentMode, setCurrentMode] = useState<AppMode>(AppMode.GENERATOR);
 
   const renderContent = () => {
     switch (currentMode) {
-      case AppMode.HOME:
-        return <Hero setMode={setCurrentMode} />;
       case AppMode.GENERATOR:
+      default:
         return (
             <Suspense fallback={<LoadingScreen />}>
                 <StyleGenerator />
             </Suspense>
         );
-      case AppMode.VIDEO:
-        return (
-            <Suspense fallback={<LoadingScreen />}>
-                <VideoGenerator />
-            </Suspense>
-        );
-      case AppMode.CHAT:
-        return (
-            <Suspense fallback={<LoadingScreen />}>
-                <ChatInterface />
-            </Suspense>
-        );
-      default:
-        return <Hero setMode={setCurrentMode} />;
     }
   };
 

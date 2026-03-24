@@ -5,7 +5,7 @@ import {
   Loader2, Sparkles, Download, Upload, X, Shirt, Image as ImageIcon, 
   User, Wand2, RefreshCw, RotateCcw, BrainCircuit, Maximize, 
   ZoomIn, ZoomOut, RectangleHorizontal, RectangleVertical, Square, Lock, Unlock, Undo2, AlertCircle,
-  Crop, Ratio
+  Crop, Ratio, Play
 } from 'lucide-react';
 
 // Data Categories for each mode
@@ -103,6 +103,8 @@ const StyleGenerator: React.FC = () => {
   const refInputRef = useRef<HTMLInputElement>(null);
   const progressInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const [showOriginal, setShowOriginal] = useState(false);
+
   // --- EFFECTS ---
   useEffect(() => {
      setResultImages([]);
@@ -120,6 +122,19 @@ const StyleGenerator: React.FC = () => {
   }, [activeTab]);
 
   // --- HANDLERS ---
+  const handleResetAll = () => {
+      setModelPhoto(null);
+      setModelPreview(null);
+      setRefPhoto(null);
+      setRefPreview(null);
+      setResultImages([]);
+      setHistory([]);
+      setOutfitSel({});
+      setBgSel({});
+      setPoseSel({});
+      setCustomPrompt("");
+      setError(null);
+  };
   const handleModelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       const file = e.target.files[0];
@@ -267,12 +282,9 @@ const StyleGenerator: React.FC = () => {
 
             if (customPrompt) {
                 description += ` Detail tambahan: ${customPrompt}.`;
-            } else {
-                let enhancers = " Wajah cantik natural, proporsi tubuh ideal, pencahayaan studio yang soft, detail tekstur kain high-definition, photorealistic 8k.";
-                if (style && (style.includes('Street') || style.includes('Casual'))) enhancers = " Pencahayaan natural outdoor, gaya candid yang hidup, 8k uhd.";
-                else if (style && (style.includes('Formal') || style.includes('Luxury'))) enhancers = " Pencahayaan elegan, kesan mewah, detail kain premium, 8k.";
-                description += enhancers;
             }
+            let enhancers = " Wajah cantik natural, proporsi tubuh ideal, detail tekstur kain high-definition, photorealistic 8k. PERTAHANKAN PENCAHAYAAN DAN LATAR BELAKANG ASLI.";
+            description += enhancers;
             prompt = description;
         }
     } else {
@@ -283,12 +295,17 @@ const StyleGenerator: React.FC = () => {
             const descriptionParts = Object.entries(selections).filter(([_, val]) => val).map(([key, val]) => `${key}: ${val}`);
             if (customPrompt) descriptionParts.push(customPrompt);
             prompt = descriptionParts.join(', ');
+            prompt += ", high quality, photorealistic 8k.";
         }
     }
     
     if (!prompt && !refPhoto) prompt = "Modest fashion model, high quality";
 
     if (faceLock) prompt += ". STRICT REQUIREMENT: Keep the model's face, features, expression, and skin tone 100% identical to the original image. Do not edit the face.";
+    
+    if (activeTab !== 'bg') {
+        prompt += ". STRICT REQUIREMENT: The background environment (walls, room, scenery) MUST remain 100% identical to the original image. Do not change the location or lighting.";
+    }
 
     try {
         let sourceImageFile = modelPhoto;
@@ -302,15 +319,33 @@ const StyleGenerator: React.FC = () => {
             }
         }
 
-        const ugcPoses = [
-            "Pose 1: Casual standing, natural everyday look, perfect for UGC video thumbnail",
-            "Pose 2: Dynamic angle, showing off the outfit details, lifestyle UGC shot",
-            "Pose 3: Walking confidently, street style aesthetic, engaging UGC content",
-            "Pose 4: Relaxed sitting pose, aesthetic cafe vibe, authentic UGC style"
-        ];
+        let variations = [];
+        if (activeTab === 'outfit') {
+            variations = [
+                "Pose: Gaya berdiri yang elegan dan natural, ubah pose dari aslinya.",
+                "Pose: Sedikit variasi gaya berdiri yang dinamis, ubah pose dari aslinya."
+            ];
+        } else if (activeTab === 'pose') {
+            variations = [
+                "Angle kamera lurus sejajar mata (eye level).",
+                "Angle kamera sedikit dari bawah (low angle) agar terlihat jenjang."
+            ];
+        } else {
+            // bg mode
+            variations = [
+                "Pencahayaan natural yang lembut (soft natural lighting).",
+                "Pencahayaan dramatis ala studio (cinematic lighting)."
+            ];
+        }
 
-        const promises = ugcPoses.map(async (posePrompt) => {
-            let currentPrompt = prompt + ". " + posePrompt;
+        const promises = variations.map(async (variationPrompt) => {
+            let currentPrompt = prompt;
+            if (activeTab !== 'bg') {
+                currentPrompt += ". " + variationPrompt;
+            } else {
+                currentPrompt += ". " + variationPrompt;
+            }
+            
             if (sourceImageFile) {
                  return await generateVirtualTryOn(sourceImageFile, currentPrompt, refPhoto, creativity, activeTab, aspectRatio, faceLock);
             } else {
@@ -373,11 +408,14 @@ const StyleGenerator: React.FC = () => {
   return (
     <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500 pb-12">
       {/* HEADER */}
-      <div className="text-center space-y-2 mb-8">
+      <div className="text-center space-y-2 mb-8 relative">
         <h1 className="text-3xl md:text-5xl font-serif font-bold text-stone-900">
           Al Hijab <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 to-purple-600">Magic Studio</span>
         </h1>
         <p className="text-stone-500 text-sm md:text-base">Virtual Makeover: Ganti gaya hijab, outfit, background, atau pose dengan AI</p>
+        <button onClick={handleResetAll} className="absolute right-0 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs font-bold text-stone-400 hover:text-red-500 transition-colors bg-white px-3 py-1.5 rounded-full border border-stone-200 shadow-sm">
+            <RotateCcw size={12} /> Reset Semua
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -528,21 +566,42 @@ const StyleGenerator: React.FC = () => {
                     {resultImages.length > 0 ? (
                         <>
                             <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transition: isDragging ? 'none' : 'transform 0.2s ease-out' }} className="w-full h-full flex items-center justify-center p-4">
-                                <div className="grid grid-cols-2 gap-4 w-full h-full max-h-full">
-                                    {resultImages.map((img, idx) => (
-                                        <div key={idx} className="relative w-full h-full flex items-center justify-center bg-stone-800 rounded-xl overflow-hidden group/item">
-                                            <img src={img} alt={`Result ${idx + 1}`} className="max-w-full max-h-full object-contain pointer-events-none select-none" />
-                                            <a href={img} onClick={(e) => e.stopPropagation()} download={`hijab-makeover-${idx + 1}.png`} className="absolute bottom-2 right-2 bg-white/20 backdrop-blur-md text-white p-2 rounded-full hover:bg-white/40 opacity-0 group-hover/item:opacity-100 transition-opacity">
-                                                <Download size={16} />
-                                            </a>
-                                        </div>
-                                    ))}
-                                </div>
+                                {resultImages.length === 1 ? (
+                                    <div className="relative w-full h-full flex items-center justify-center bg-stone-800 rounded-xl overflow-hidden group/item">
+                                        <img src={showOriginal && modelPreview ? modelPreview : resultImages[0]} alt="Result" className="max-w-full max-h-full object-contain pointer-events-none select-none transition-opacity duration-200" />
+                                        <a href={resultImages[0]} onClick={(e) => e.stopPropagation()} download="hijab-makeover.png" className="absolute top-4 right-4 bg-black/60 backdrop-blur-md text-white px-4 py-2.5 rounded-full hover:bg-black/80 transition-all z-10 flex items-center gap-2 shadow-lg border border-white/10">
+                                            <Download size={18} /> <span className="text-xs font-bold">Download</span>
+                                        </a>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-4 w-full h-full max-h-full">
+                                        {resultImages.map((img, idx) => (
+                                            <div key={idx} className="relative w-full h-full flex items-center justify-center bg-stone-800 rounded-xl overflow-hidden group/item">
+                                                <img src={showOriginal && modelPreview ? modelPreview : img} alt={`Result ${idx + 1}`} className="max-w-full max-h-full object-contain pointer-events-none select-none transition-opacity duration-200" />
+                                                <a href={img} onClick={(e) => e.stopPropagation()} download={`hijab-makeover-${idx + 1}.png`} className="absolute top-3 right-3 bg-black/60 backdrop-blur-md text-white p-2.5 rounded-full hover:bg-black/80 transition-all z-10 shadow-lg border border-white/10">
+                                                    <Download size={16} />
+                                                </a>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
-                            <div className="absolute top-4 right-4 flex flex-col gap-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                            <div className="absolute top-1/2 right-4 -translate-y-1/2 flex flex-col gap-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                                 <button onClick={handleZoomIn} className="bg-black/50 hover:bg-black/70 text-white p-2 rounded-lg backdrop-blur-sm"><ZoomIn size={18} /></button>
                                 <button onClick={handleZoomOut} className="bg-black/50 hover:bg-black/70 text-white p-2 rounded-lg backdrop-blur-sm"><ZoomOut size={18} /></button>
                                 {zoom > 1 && <button onClick={handleResetZoom} className="bg-black/50 hover:bg-black/70 text-white p-2 rounded-lg backdrop-blur-sm"><Maximize size={18} /></button>}
+                            </div>
+                            <div className="absolute top-4 left-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                <button 
+                                    onMouseDown={(e) => { e.stopPropagation(); setShowOriginal(true); }} 
+                                    onMouseUp={(e) => { e.stopPropagation(); setShowOriginal(false); }}
+                                    onMouseLeave={(e) => { e.stopPropagation(); setShowOriginal(false); }}
+                                    onTouchStart={(e) => { e.stopPropagation(); setShowOriginal(true); }}
+                                    onTouchEnd={(e) => { e.stopPropagation(); setShowOriginal(false); }}
+                                    className="bg-black/50 hover:bg-black/70 text-white px-3 py-2 rounded-lg backdrop-blur-sm text-xs font-bold flex items-center gap-2"
+                                >
+                                    <ImageIcon size={14} /> Tahan untuk Bandingkan
+                                </button>
                             </div>
                             <div className="absolute bottom-6 right-6 flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                                  {history.length > 0 && <button onClick={handleUndo} className="bg-white/10 backdrop-blur-md border border-white/20 text-white p-3 rounded-full hover:bg-white/20"><Undo2 size={20} /></button>}

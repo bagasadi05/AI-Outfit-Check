@@ -1,6 +1,6 @@
 import React from 'react';
 import { AppMode } from '../types';
-import { Sparkles, Home, Video, MessageCircle } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
 interface NavigationProps {
   currentMode: AppMode;
@@ -9,10 +9,7 @@ interface NavigationProps {
 
 const Navigation: React.FC<NavigationProps> = ({ currentMode, setMode }) => {
   const navItems = [
-    { mode: AppMode.HOME, icon: Home, label: 'Beranda' },
     { mode: AppMode.GENERATOR, icon: Sparkles, label: 'Style Gen' },
-    { mode: AppMode.VIDEO, icon: Video, label: 'Veo Video' },
-    { mode: AppMode.CHAT, icon: MessageCircle, label: 'Chat Stylist' },
   ];
 
   return (
@@ -22,7 +19,7 @@ const Navigation: React.FC<NavigationProps> = ({ currentMode, setMode }) => {
           {/* Logo - Desktop Only */}
           <div 
             className="hidden md:flex items-center gap-2 cursor-pointer group"
-            onClick={() => setMode(AppMode.HOME)}
+            onClick={() => setMode(AppMode.GENERATOR)}
           >
             <div className="bg-gradient-to-br from-rose-500 to-purple-600 p-1.5 rounded-lg">
                 <Sparkles className="text-white" size={20} />
